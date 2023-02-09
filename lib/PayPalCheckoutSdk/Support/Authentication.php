@@ -2,7 +2,6 @@
 
 namespace PayPalCheckoutSdk\Support;
 
-use PayPalCheckoutSdk\Core\AccessToken;
 use PayPalCheckoutSdk\Core\PayPalHttpClient;
 use PayPalCheckoutSdk\Core\AccessTokenRequest;
 use PayPalCheckoutSdk\Core\ClientTokenRequest;
@@ -75,21 +74,23 @@ class Authentication
         */
        $request = new AccessTokenRequest($this->environment);
        $response = $this->getClient()->execute($request);
-       $this->accessTokenObject = new AccessToken($response->result->access_token, $response->result->token_type, $response->result->expires_in);
-
-       // store access token in cache
-       $this->cacheToken($this->accessTokenObject);
        
-       return $this->accessTokenObject->token;
+       // store access token in cache
+       $this->cacheToken($response->result);
+       
+       return $response->result->access_token;
     }
 
     
     /**
      * Store access token in cache
      */
-    protected function cacheToken(AccessToken $accessTokenObject)
+    protected function cacheToken($sourceObject)
     {
-        file_put_contents($this->cacheFilePath, json_encode($accessTokenObject));
+        file_put_contents($this->cacheFilePath, json_encode([
+            'sourceObject' => $sourceObject,
+            'createdAt' => time(),
+        ]));
     }   
 
     /**
@@ -97,18 +98,18 @@ class Authentication
      */
     protected function pullFromCache()
     {
+
         if(!file_exists($this->cacheFilePath)) {
             return null;
         }
         $data = json_decode(file_get_contents($this->cacheFilePath), true);
         
-        $accessTokenObject = new AccessToken($data['token'], $data['tokenType'], $data['expiresIn']);
-        
-        if($accessTokenObject->isExpired()) {
+        // if no valid data is found or token is expired
+        if(!$data || time() >= $data['createdAt'] + $data['sourceObject']['expires_in']) {
             return null;
         }
 
-        return $accessTokenObject->token;
+        return $data['sourceObject']['access_token'];
     }
 
 
